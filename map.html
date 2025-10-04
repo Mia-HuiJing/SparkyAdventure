@@ -1,0 +1,203 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Sparky Adventure – Map</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="assets/css/scene.css"/>
+  <style>
+    /* Background map */
+    .map {
+      position: fixed;
+      inset: 0;
+      background: #000 center/cover no-repeat;
+      background-image: url('assets/map.jpeg');
+    }
+
+    /* Map points */
+    .point {
+      position: absolute;
+      width: 42px; height: 42px; border-radius: 50%;
+      display: grid; place-items: center;
+      color: black; font-size: 18px; font-weight: 700;
+      background: rgba(255,255,255,0.7);
+      border: 1px solid rgba(120,190,255,.6);
+      backdrop-filter: blur(6px);
+      box-shadow: 0 0 18px rgba(0,170,255,.9), 0 0 38px rgba(0,170,255,.5), 0 0 64px rgba(0,170,255,.35);
+      cursor: pointer;
+      transition: transform .15s ease, filter .2s ease, opacity .2s ease;
+      animation: bounce 1.1s ease-in-out infinite;
+    }
+    .point:hover { transform: translateY(-2px) scale(1.04); }
+    .point.done, .point.disabled {
+      filter: grayscale(1) brightness(.6);
+      box-shadow: none;
+      cursor: default;
+      animation: none;
+      opacity: .6;
+      pointer-events: none;
+    }
+    @keyframes bounce {
+      0%,100% { transform: translateY(0); }
+      50% { transform: translateY(-4px); }
+    }
+
+    .page-fade {
+      position: fixed;
+      inset: 0;
+      background: #000;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity .35s ease;
+      z-index: 9;
+    }
+    .page-fade.show { opacity: 1; }
+
+    /* Sparky canvas */
+    canvas#sparky {
+      position: fixed;
+      width: 180px;
+      height: auto;
+      pointer-events: none;
+      z-index: 10;
+      transform: translate(-50%, -100%);
+    }
+  </style>
+</head>
+
+<body>
+  <div class="map"></div>
+
+  <div class="cabinet" id="cabinet">
+    <div class="slot"></div><div class="slot"></div><div class="slot"></div><div class="slot"></div><div class="slot"></div>
+  </div>
+
+  <!-- Map Points -->
+  <button class="point" style="left:18%; top:28%;" data-scene="powergrid" data-target="PowerGrid.html">1</button>
+  <button class="point" style="left:54%; top:24%;" data-scene="astronaut" data-target="Astronaut.html">2</button>
+  <button class="point" style="left:76%; top:46%;" data-scene="farmer"   data-target="Farmer.html">3</button>
+  <button class="point" style="left:32%; top:62%;" data-scene="flight"   data-target="Flight.html">4</button>
+  <button class="point" style="left:60%; top:70%;" data-scene="satellite" data-target="Satellite.html">5</button>
+
+  <div class="page-fade" id="fade"></div>
+
+  <!-- Sparky -->
+  <canvas id="sparky" width="512" height="512"></canvas>
+
+  <script src="assets/js/secrets.js"></script>
+  <script>
+    const points = [...document.querySelectorAll('.point')];
+    const fade = document.getElementById('fade');
+    Secrets.renderCabinet();
+
+    // Mark visited
+    points.forEach(p => {
+      const id = p.dataset.scene;
+      if (Visits.has(id)) {
+        p.classList.add('done', 'disabled');
+        p.setAttribute('aria-disabled', 'true');
+      }
+    });
+
+    // Go to scene
+    points.forEach(p => {
+      p.addEventListener('click', () => {
+        if (p.classList.contains('disabled')) return;
+        const id = p.dataset.scene;
+        const target = p.dataset.target;
+        Visits.mark(id);
+        p.classList.add('done', 'disabled');
+        fade.classList.add('show');
+        setTimeout(() => { window.location.href = target; }, 350);
+      });
+    });
+
+    // Go to aurora if all done
+    const ALL_IDS = ['powergrid', 'astronaut', 'farmer', 'flight', 'satellite'];
+    if (Visits.allClicked(ALL_IDS)) {
+      fade.classList.add('show');
+      setTimeout(() => { window.location.href = 'aurora.html'; }, 350);
+    }
+
+    /* Sparky */
+    const canvas = document.getElementById('sparky');
+    const ctx = canvas.getContext('2d');
+    const LEFT_PATH = 'assets/SparkyLeft/';
+    const RIGHT_PATH = 'assets/SparkyRight/';
+    const TOTAL_LEFT = 46;
+    const TOTAL_RIGHT = 69;
+
+    let leftFrames = [], rightFrames = [];
+    let currentDir = 'right', targetDir = 'right';
+    let frameIndex = 0, reversing = false;
+    let mouseX = innerWidth / 2, mouseY = innerHeight / 2, prevX = mouseX;
+    let lastMove = performance.now();
+
+    // Preload frames (2-digit)
+    function preload(path, prefix, total) {
+      const arr = [];
+      for (let i = 0; i <= total; i++) {
+        const num = String(i).padStart(2, '0');  // 00–99
+        const img = new Image();
+        img.src = `${path}${prefix}${num}.png`;
+        arr.push(img);
+      }
+      return arr;
+    }
+
+    leftFrames = preload(LEFT_PATH, 'SparkyLeft', TOTAL_LEFT);
+    rightFrames = preload(RIGHT_PATH, 'SparkyRight', TOTAL_RIGHT);
+
+    const OFFSET_X = 80; 
+    const OFFSET_Y = -30; 
+
+    function draw() {
+      const frames = (currentDir === 'left') ? leftFrames : rightFrames;
+      const total = (currentDir === 'left') ? TOTAL_LEFT : TOTAL_RIGHT;
+      const img = frames[Math.max(0, Math.min(total, Math.floor(frameIndex)))];
+      if (!img.complete) return;
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      canvas.style.left = `${mouseX + OFFSET_X}px`;
+      canvas.style.top = `${mouseY + OFFSET_Y}px`;
+    }
+
+    function isMoving() {
+      return performance.now() - lastMove < 100;
+    }
+
+    function animate() {
+      requestAnimationFrame(animate);
+      if (reversing) {
+        frameIndex -= 4;
+        if (frameIndex <= 0) {
+          frameIndex = 0;
+          reversing = false;
+          currentDir = targetDir;
+        }
+      } else if (isMoving()) {
+        frameIndex += 1;
+        const total = (currentDir === 'left') ? TOTAL_LEFT : TOTAL_RIGHT;
+        if (frameIndex >= total) frameIndex = 0;
+      }
+      draw();
+    }
+    animate();
+
+    document.addEventListener('mousemove', e => {
+      const dx = e.clientX - prevX;
+      if (Math.abs(dx) > 1) {
+        mouseX = e.clientX;
+        mouseY = e.clientY;
+        lastMove = performance.now();
+        const newDir = (dx < 0) ? 'left' : 'right';
+        if (newDir !== currentDir && !reversing) {
+          targetDir = newDir;
+          reversing = true;
+        }
+      }
+      prevX = e.clientX;
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Sparky Adventure – Aurora</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="assets/css/scene.css"/>
+  <style>
+    /* Caption */
+    .caption{
+      position:fixed;
+      left:50%;
+      bottom:36px;
+      transform:translateX(-50%);
+      max-width:min(820px,90vw);
+      padding:14px 18px;
+      border-radius:16px;
+      background:linear-gradient(180deg,rgba(0,0,0,.55),rgba(0,0,0,.78));
+      border:1px solid rgba(255,255,255,.25);
+      backdrop-filter:blur(6px);
+      box-shadow:0 10px 24px rgba(0,0,0,.35);
+      font-size:clamp(14px,2.1vw,20px);
+      line-height:1.35;
+      opacity:0;transition:opacity .35s ease;
+      z-index:3
+    }
+    .caption.show{opacity:1}
+
+    /* Progress bar */
+    .progress{
+      position:absolute;left:0;right:0;bottom:-6px;height:3px;
+      background:rgba(255,255,255,.15);border-radius:2px;overflow:hidden
+    }
+    .progress > i{
+      display:block;height:100%;width:0%;
+      background:linear-gradient(90deg,#7bdcff,#a78bfa,#34d399)
+    }
+  </style>
+</head>
+<body>
+  <div class="stage">
+    <video id="bgVideo" preload="auto" muted playsinline autoplay loop>
+      <source src="assets/aurora.mp4" type="video/mp4">
+    </video>
+  </div>
+
+  <div id="scrollHint" class="hint">Scroll your mouse (or use ← / → / Space)</div>
+
+  <div id="cap" class="caption" aria-live="polite">
+    <div id="capText"></div>
+    <div class="progress"><i id="bar"></i></div>
+  </div>
+
+  <script>
+    if (performance.navigation.type === performance.navigation.TYPE_RELOAD) {
+        localStorage.clear();
+        sessionStorage.clear();
+        window.location.replace('intro.html');
+    }
+
+    const cap    = document.getElementById('cap');
+    const capTxt = document.getElementById('capText');
+    const bar    = document.getElementById('bar');
+    const hint   = document.getElementById('scrollHint');
+    const hud    = document.getElementById('hud');
+
+    const CAP_STEPS = [
+      { t:0.00, html:`Wow… look at that! The sky is glowing just like me!` },
+      { t:0.10, html:`It’s so beautiful… and peaceful… no lights breaking this time.` },
+      { t:0.20, html:`I didn’t make a mess… I made something pretty.` },
+      { t:0.30, html:`Hehe, maybe this is where I’m supposed to shine.` },
+      { t:0.40, html:`All those colors… they feel warm, like home.` },
+      { t:0.50, html:`I guess this is what people see when I dance in the sky.` },
+      { t:0.60, html:`I still feel sorry for all the things I broke…` },
+      { t:0.70, html:`But maybe it wasn’t bad — it’s just how nature works.` },
+      { t:0.85, html:`My energy’s fading… I can feel myself slowing down.` },
+      { t:0.95, html:`Bye-bye, Earth… I’ll be light again when the Sun calls me.` }
+    ];
+    const SCROLL_SENS = 0.0016;  
+    let p = 0;                  
+    let hintShown = false; 
+
+    function captionFor(progress){
+      let last = CAP_STEPS[0].html;
+      for (const step of CAP_STEPS) {
+        if (progress >= step.t) last = step.html; else break;
+      }
+      return last;
+    }
+
+    function render(){
+      const html = captionFor(p);
+      if (capTxt.innerHTML !== html) capTxt.innerHTML = html;
+      cap.classList.add('show');
+      bar.style.width = `${Math.round(p*100)}%`;
+      hud.textContent = `Caption: ${Math.round(p*100)}%`;
+    }
+
+    function firstHint(){
+      if (!hintShown){
+        hintShown = true;
+        hint.classList.add('show');
+        setTimeout(()=> hint.classList.remove('show'), 4200);
+      }
+    }
+
+    addEventListener('wheel', (e)=>{
+      e.preventDefault();
+      hint.classList.remove('show');
+      p = Math.min(1, Math.max(0, p + e.deltaY * SCROLL_SENS));
+      render();
+    }, { passive:false });
+
+    addEventListener('keydown', (e)=>{
+      hint.classList.remove('show');
+      if (e.key === 'ArrowRight' || e.key === ' ') p = Math.min(1, p + 0.02);
+      if (e.key === 'ArrowLeft')                    p = Math.max(0, p - 0.02);
+      render();
+    });
+
+    let lastY = null;
+    addEventListener('touchstart', (e)=>{ lastY = e.touches[0].clientY; hint.classList.remove('show'); }, {passive:true});
+    addEventListener('touchmove',  (e)=>{
+      const y = e.touches[0].clientY;
+      if (lastY != null){
+        const dy = lastY - y; 
+        p = Math.min(1, Math.max(0, p + dy * (SCROLL_SENS*2.2)));
+        render();
+      }
+      lastY = y;
+    }, {passive:true});
+    addEventListener('touchend', ()=>{ lastY = null; }, {passive:true});
+
+    function boot(){
+      firstHint();
+      render();
+    }
+    boot();
+  </script>
+</body>
+</html>

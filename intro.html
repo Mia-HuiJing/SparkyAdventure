@@ -1,0 +1,250 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Solar Flares with CME</title>
+<link rel="stylesheet" href="assets/css/scene.css"/>
+<style>
+  /* Start CTA overlay */
+  .start-cta{
+    position:fixed; inset:0; display:grid; place-items:center;
+    z-index:7; opacity:0; pointer-events:none; transition:opacity .4s ease;
+  }
+  .start-cta.show{ opacity:1; pointer-events:auto; }
+  .start-card{
+    display:flex; flex-direction:column; gap:14px; align-items:center;
+    padding:20px 24px; border-radius:16px;
+    background:rgba(0,0,0,.55); border:1px solid rgba(255,255,255,.25);
+    backdrop-filter: blur(8px);
+    box-shadow: 0 10px 28px rgba(0,0,0,.5);
+  }
+  .start-title{ font-size: clamp(18px,3vw,22px); letter-spacing:.4px; opacity:.95 }
+  .btn{
+    appearance:none; border:none; border-radius:12px; padding:12px 18px;
+    background:rgba(255,255,255,.12); color:#fff; border:1px solid rgba(255,255,255,.3);
+    font-size:16px; letter-spacing:.3px; cursor:pointer; user-select:none;
+    transition:transform .15s ease, background .2s ease;
+  }
+  .btn:hover{ transform:translateY(-1px); background:rgba(255,255,255,.18); }
+</style>
+</head>
+<body>
+  <div class="stage">
+    <video id="bgVideo" preload="auto" muted playsinline autoplay>
+      <source id="bgSource" src="assets/scene1.mp4" type="video/mp4">
+    </video>
+
+    <canvas id="seq"></canvas>
+    <div id="bubble" aria-hidden="true"></div>
+    <div id="cap" class="caption" aria-live="polite"></div>
+  </div>
+
+  <!-- CTA shown when captions reach the end -->
+  <div id="startCta" class="start-cta" aria-hidden="true">
+    <div class="start-card">
+      <div class="start-title">Ready to begin?</div>
+      <button id="startBtn" class="btn">Start Your Journey</button>
+    </div>
+  </div>
+
+  <div id="scrollHint" class="hint">Scroll your mouse on the screen</div>
+  <div class="hud" id="hud">Scene: 1 • Mascot: off • Caption: 0%</div>
+
+<script>
+(function () {
+  var INTRO_PAGE = "intro.html"; 
+  var navEntry = (performance.getEntriesByType && performance.getEntriesByType('navigation')[0]) || null;
+  var isReload = (navEntry && navEntry.type === 'reload') ||
+                 (performance.navigation && performance.navigation.type === performance.navigation.TYPE_RELOAD);
+
+  if (!isReload) return; 
+
+  try { localStorage.clear(); } catch(e) {}
+  try { sessionStorage.clear(); } catch(e) {}
+
+  var here = location.pathname.split('/').pop().toLowerCase() || "intro.html";
+  if (here !== INTRO_PAGE.toLowerCase()) {
+    window.location.replace(INTRO_PAGE);
+  }
+})();
+
+const FILES = {
+  basePath: 'assets/SparkyWalking/',
+  prefix:   'SparkyWalking',
+  startNum: 0,
+  endNum:   77,
+  pad:      2,
+  ext:      '.png'
+};
+const totalFrames = FILES.endNum - FILES.startNum + 1;
+const padNum = (n,s)=>String(n).padStart(s,'0');
+const srcForIndex = (i)=>`${FILES.basePath}${FILES.prefix}${padNum(FILES.startNum+i,FILES.pad)}${FILES.ext}`;
+
+/* DOM */
+const canvas = document.getElementById('seq'), ctx = canvas.getContext('2d');
+const hud    = document.getElementById('hud');
+const bgVideo= document.getElementById('bgVideo');
+const bgSrc  = document.getElementById('bgSource');
+const bubble = document.getElementById('bubble');
+const capEl  = document.getElementById('cap');
+const hint   = document.getElementById('scrollHint');
+const startCta = document.getElementById('startCta');
+const startBtn = document.getElementById('startBtn');
+
+/* STATE */
+let videoIndex = 1;      
+let scene2Active = false;
+let mascotVisible = false;  
+let scrollP = 0;            
+let endShown = false;      
+
+/* Mascot placement & size */
+const SCALE = 0.40;          
+const FIXED_FRAME = 0;      
+const LEFT_OFFSET = 0.05;   
+const BOTTOM_PADDING = 0;
+const BUBBLE_SCALE = 0.8;
+
+/* Scroll sensitivity for captions */
+const SCROLL_SENS = 0.0014;
+
+/* Captions (timeline) */
+const CAP_STEPS = [
+  { t: 0.05, html: `Hi there! I’m Sparky 🌟 I am born when the Sun’s magnetic fields get twisted and suddenly snap.` },
+  { t: 0.20, html: `This snap lets out a huge blast of light, heat, and tiny particles, sometimes sending a solar storm toward Earth.` },
+  { t: 0.35, html: `We call this space weather. It’s how the Sun’s powerful bursts can reach Earth and the space around us.` },
+  { t: 0.55, html: `These blasts happen more often during the Sun’s 11-year cycle, especially when it is most active.` },
+  { t: 0.75, html: `Right now we are in Solar Cycle 25, and scientists know more flares will appear as the Sun gets busier.` },
+  { t: 0.90, html: `Are you ready? Let’s begin our adventure journey together! 🚀` }
+];
+
+function captionFor(p){
+  let last = null;
+  for (const step of CAP_STEPS) {
+    if (p >= step.t) last = step.html; else break;
+  }
+  return last;
+}
+
+/* Preload a few mascot frames */
+const cache = new Map();
+for (let i = 0; i < Math.min(totalFrames, 4); i++){
+  const im = new Image();
+  im.src = srcForIndex(i);
+  im.onload = ()=>cache.set(i, im);
+}
+
+/* Layout */
+function resize(){ canvas.width = innerWidth; canvas.height = innerHeight; draw(); }
+addEventListener('resize', resize);
+
+/* HUD */
+function setHud(){
+  hud.textContent = `Scene: ${videoIndex} • Mascot: ${mascotVisible ? 'on' : 'off'} • Caption: ${(scrollP*100|0)}%`;
+}
+
+/* Video flow */
+bgVideo.addEventListener('ended', ()=>{
+  if (videoIndex === 1){
+    videoIndex = 2;
+    bgSrc.src = 'assets/scene2.mp4';
+    bgVideo.load();
+    bgVideo.loop = true;
+    bgVideo.play();
+    scene2Active = true;
+    showHint();
+  }
+});
+
+/* Show end CTA */
+function maybeShowEnd(){
+  if (endShown) return;
+  if (scrollP >= 0.95){
+    endShown = true;
+    bgVideo.classList.add('blurred');
+    startCta.classList.add('show');
+    startCta.setAttribute('aria-hidden','false');
+  }
+}
+
+/* Draw mascot + caption */
+function draw(){
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+
+  if (scene2Active && mascotVisible){
+    const img = cache.get(FIXED_FRAME) || cache.get(0);
+    if (img){
+      const dw = img.width * SCALE;
+      const dh = img.height * SCALE;
+      const dx = LEFT_OFFSET * canvas.width;
+      const dy = canvas.height - dh - BOTTOM_PADDING;
+
+      // mascot
+      ctx.drawImage(img, dx, dy, dw, dh);
+
+      // bubble
+      const bSize = Math.max(dw, dh) * BUBBLE_SCALE;
+      bubble.style.width  = `${bSize}px`;
+      bubble.style.height = `${bSize}px`;
+      bubble.style.left   = `${dx + dw/2}px`;
+      bubble.style.top    = `${dy + dh/2}px`;
+
+      // caption BESIDE mascot (auto-flip if not enough room)
+      const GAP = 16, MARGIN = 16, CAP_MAX = 520;
+      let left = dx + dw + GAP;
+      if (left + CAP_MAX + MARGIN > canvas.width) {
+        left = Math.max(MARGIN, dx - GAP - CAP_MAX);
+      }
+      const top = dy + dh/2; // vertically centered to mascot
+
+      capEl.style.left = `${left}px`;
+      capEl.style.top  = `${top}px`;
+
+      const html = captionFor(scrollP);
+      if (html){
+        if (capEl.innerHTML !== html) capEl.innerHTML = html;
+        capEl.classList.add('show');
+      } else {
+        capEl.classList.remove('show');
+      }
+    }
+  }
+
+  maybeShowEnd();
+  setHud();
+}
+
+addEventListener('wheel', (e)=>{
+  if (!scene2Active) return;
+  if (!mascotVisible){ mascotVisible = true; hideHint(); draw(); return; }
+
+  scrollP = Math.min(1, Math.max(0, scrollP + e.deltaY * SCROLL_SENS));
+  hideHint();
+  draw();
+},{passive:true});
+
+addEventListener('keydown', (e)=>{
+  if (!scene2Active) return;
+  if (!mascotVisible){ mascotVisible = true; hideHint(); draw(); return; }
+  if (e.key==='ArrowRight' || e.key===' '){ scrollP = Math.min(1, scrollP + 0.02); }
+  if (e.key==='ArrowLeft'){ scrollP = Math.max(0, scrollP - 0.02); }
+  draw();
+});
+
+/* Hint */
+function showHint(){ hint.classList.add('show'); setTimeout(hideHint, 5000); }
+function hideHint(){ hint.classList.remove('show'); }
+
+/* CTA → map */
+startBtn.addEventListener('click', ()=>{
+  try { sessionStorage.setItem('journey_started', '1'); } catch(e) {}
+  window.location.href = 'map.html';
+});
+
+/* Boot */
+function boot(){ resize(); setHud(); }
+boot();
+</script>
+</body>
+</html>

@@ -1,0 +1,272 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Sparky Adventure – Farmer</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="assets/css/scene.css"/>
+</head>
+
+<body>
+  <div class="stage">
+    <video id="bgVideo" class="blurred" preload="auto" muted playsinline>
+      <source id="bgSource" src="assets/farmer1.mp4" type="video/mp4">
+    </video>
+
+    <canvas id="seq"></canvas>
+    <div id="bubble" class="bubble" aria-hidden="true"></div>
+    <div id="cap" class="caption" aria-live="polite"></div>
+  </div>
+
+  <div class="ripple-cta" id="rippleCta" aria-hidden="true">
+    <div class="ripple-btn" id="rippleBtn"><span>Continue</span></div>
+  </div>
+
+  <div class="outline-wrap" id="outlineWrap" aria-hidden="true">
+    <div class="outline">
+      <h1>🌾 Influence</h1>
+      <p>Solar storms can mess up GPS signals on harvesters, making them lose track and slow down the work.</p>
+      <div class="controls">
+        <button id="secretBtn" class="btn">Get Secret Password</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="cabinet" id="cabinet">
+    <div class="slot"></div><div class="slot"></div><div class="slot"></div><div class="slot"></div><div class="slot"></div>
+  </div>
+
+  <div id="scrollMsg" class="hint show" aria-hidden="false">Scroll your mouse on the screen</div>
+  <div class="hud" id="hud">Frame: 00 / 77 • X: — • Video: loading…</div>
+
+  <script src="assets/js/secrets.js"></script>
+  <script>
+    const sceneId = 'farmer';
+    const nextVideo = 'assets/farmer2.mp4';
+
+    /* ---------- Frames ---------- */
+    const FILES = { basePath:'./assets/SparkyWalking/', prefix:'SparkyWalking', startNum:0, endNum:77, pad:2, ext:'.png' };
+    const totalFrames = FILES.endNum - FILES.startNum + 1;
+    const padNum=(n,s)=>String(n).padStart(s,'0');
+    const srcForIndex=i=>`${FILES.basePath}${FILES.prefix}${padNum(FILES.startNum+i,FILES.pad)}${FILES.ext}`;
+
+    /* ---------- DOM ---------- */
+    const canvas=document.getElementById('seq'), ctx=canvas.getContext('2d');
+    const bgVideo=document.getElementById('bgVideo'), bgSource=document.getElementById('bgSource');
+    const rippleCta=document.getElementById('rippleCta'), rippleBtn=document.getElementById('rippleBtn');
+    const outlineWrap=document.getElementById('outlineWrap'), secretBtn=document.getElementById('secretBtn');
+    const bubble=document.getElementById('bubble'); const hud=document.getElementById('hud');
+    const scrollMsg=document.getElementById('scrollMsg'); const capEl=document.getElementById('cap');
+
+    function resizeCanvas(){ canvas.width=innerWidth; canvas.height=innerHeight; draw(); }
+    addEventListener('resize', resizeCanvas);
+
+    const SPARKY_SCALE = Scene.SPARKY_SCALE, STEP_PX=Scene.STEP_PX, TRIGGER_X=Scene.TRIGGER_X, BUBBLE_SCALE=Scene.BUBBLE_SCALE;
+
+    /* ---------- Caption scripts ---------- */
+    const CAP_STEPS = {
+      1: [
+        {t:0.05, html:`Wow… look at this!`},
+        {t:0.25, html:`Maybe I can say hi!`},
+        {t:0.50, html:`Why is the farmer shouting?`}
+      ],
+      2: [
+        {t:0.05, html:`Oh no…`},
+        {t:0.35, html:`I broke it again! I didn’t mean to!`},
+        {t:0.70, html:`Everywhere I go… I just cause trouble.`}
+      ]
+    };
+    const SCROLL_SENS = 0.0016;
+    let capP1 = 0, capP2 = 0;
+    let hintShown = true;
+
+    function captionFor(videoIdx, p){
+      const arr = CAP_STEPS[videoIdx] || [];
+      let last=null; for (const s of arr){ if (p>=s.t) last=s.html; else break; }
+      return last;
+    }
+
+    function renderCaption(){
+      const v1Active=(videoIndex===1 && (videoStarted || rippleCta.classList.contains('show')));
+      const v2Active=(videoIndex===2 && !video2Done);
+      if(!v1Active && !v2Active){ capEl.classList.remove('show'); return; }
+
+      const img=cache.get(frame)||cache.get(0);
+      if(!img){ capEl.classList.remove('show'); return; }
+
+      const dw=img.width*SPARKY_SCALE, dh=img.height*SPARKY_SCALE;
+      const dx=xPos, dy=canvas.height-dh;
+      const GAP=40, MAXW=520, MARGIN=32;
+
+      let left=dx+dw+GAP;
+      if(left+MAXW+MARGIN>canvas.width) left=Math.max(MARGIN, dx-GAP-MAXW);
+      const top=dy+dh*0.4;
+
+      capEl.style.left=`${left}px`;
+      capEl.style.top=`${top}px`;
+      capEl.style.transform='translateY(-50%)';
+
+      const p=v1Active?capP1:capP2;
+      const html=captionFor(videoIndex,p);
+      if(html){ if(capEl.innerHTML!==html) capEl.innerHTML=html; capEl.classList.add('show'); }
+      else capEl.classList.remove('show');
+    }
+
+    /* ---------- Cache ---------- */
+    const cache=new Map();
+    for(let i=0;i<totalFrames;i++){ const img=new Image(); img.src=srcForIndex(i); img.onload=()=>cache.set(i,img); }
+
+    /* ---------- State ---------- */
+    let frame=0, xPos=Number.NaN;
+    let movementLocked=false, videoIndex=1, videoStarted=false, video2Done=false, lockMinAtTrigger=false;
+    let needSecret=false, secretStored=false, autoWalking=false;
+
+    function updateHud(){
+      const x=Number.isFinite(xPos)?Math.round(xPos):'—';
+      const v=bgVideo.paused?(bgVideo.ended?'ended':'paused'):'playing';
+      hud.textContent=`Frame:${padNum(frame,2)} / ${padNum(totalFrames-1,2)} • X:${x} • Video:${v} (${videoIndex}/2)`;
+    }
+
+    function clampX(x,dw){
+      const minX=lockMinAtTrigger?TRIGGER_X:-dw;
+      const overflow=autoWalking?160:0;
+      if(videoIndex===1&&videoStarted&&!bgVideo.ended)return TRIGGER_X;
+      if(videoIndex===2&&!video2Done)return minX;
+      return Math.min(Math.max(x,minX),canvas.width-dw+overflow);
+    }
+
+    function updateBubble(dx,dy,dw,dh){
+      const size=Math.max(dw,dh)*BUBBLE_SCALE;
+      bubble.style.width=`${size}px`; bubble.style.height=`${size}px`;
+      bubble.style.left=`${dx+dw/2}px`; bubble.style.top=`${dy+dh/2}px`;
+    }
+
+    function nudgeSecretBtn(){
+      secretBtn.classList.remove('attention'); void secretBtn.offsetWidth;
+      secretBtn.classList.add('attention');
+    }
+
+    /* ---------- Draw ---------- */
+    function draw(){
+      ctx.clearRect(0,0,canvas.width,canvas.height);
+      const img=cache.get(frame)||cache.get(0);
+      if(!img){ updateHud(); return; }
+      if(!Number.isFinite(xPos)) xPos=Scene.START_X;
+
+      const dw=img.width*SPARKY_SCALE, dh=img.height*SPARKY_SCALE;
+      xPos=clampX(xPos,dw);
+      const dx=xPos, dy=canvas.height-dh;
+      ctx.drawImage(img,dx,dy,dw,dh);
+      updateBubble(dx,dy,dw,dh);
+      renderCaption();
+
+      if(video2Done&&!needSecret&&xPos>=canvas.width-dw-0.5){
+        needSecret=true; outlineWrap.classList.add('show');
+      }
+      updateHud();
+    }
+
+    /* ---------- Input ---------- */
+    addEventListener('wheel', e=>{
+      if(hintShown){ scrollMsg.classList.remove('show'); hintShown=false; } // ✅ hide on first scroll
+
+      if(videoIndex===1&&(videoStarted||rippleCta.classList.contains('show'))){
+        capP1=Math.min(1,Math.max(0,capP1+e.deltaY*SCROLL_SENS));
+        renderCaption(); return;
+      }
+      if(videoIndex===2&&!video2Done){
+        capP2=Math.min(1,Math.max(0,capP2+e.deltaY*SCROLL_SENS));
+        renderCaption(); return;
+      }
+      if(needSecret&&!secretStored){ nudgeSecretBtn(); return; }
+      if(!movementLocked&&!autoWalking){
+        if(e.deltaY>0){ frame=(frame+1)%totalFrames; xPos+=STEP_PX; }
+        else if(e.deltaY<0){ frame=(frame-1+totalFrames)%totalFrames; xPos-=STEP_PX; }
+        if(videoIndex===1&&!videoStarted&&Number.isFinite(xPos)&&xPos>=TRIGGER_X){
+          xPos=TRIGGER_X; lockMinAtTrigger=true; movementLocked=true;
+          bgVideo.classList.remove('blurred'); bgVideo.play().catch(()=>{}); videoStarted=true; renderCaption();
+        }
+      }
+      draw();
+    },{passive:true});
+
+    addEventListener('keydown', e=>{
+      if(hintShown){ scrollMsg.classList.remove('show'); hintShown=false; }
+
+      if(videoIndex===1&&(videoStarted||rippleCta.classList.contains('show'))){
+        if(e.key==='ArrowRight'||e.key===' ') capP1=Math.min(1,capP1+0.02);
+        if(e.key==='ArrowLeft') capP1=Math.max(0,capP1-0.02);
+        renderCaption(); return;
+      }
+      if(videoIndex===2&&!video2Done){
+        if(e.key==='ArrowRight'||e.key===' ') capP2=Math.min(1,capP2+0.02);
+        if(e.key==='ArrowLeft') capP2=Math.max(0,capP2-0.02);
+        renderCaption(); return;
+      }
+      if(needSecret&&!secretStored){ nudgeSecretBtn(); return; }
+      if(!movementLocked&&!autoWalking){
+        if(e.key==='ArrowRight'){ frame=(frame+1)%totalFrames; xPos+=STEP_PX; }
+        if(e.key==='ArrowLeft'){ frame=(frame-1+totalFrames)%totalFrames; xPos-=STEP_PX; }
+        if(videoIndex===1&&!videoStarted&&Number.isFinite(xPos)&&xPos>=TRIGGER_X){
+          xPos=TRIGGER_X; lockMinAtTrigger=true; movementLocked=true;
+          bgVideo.classList.remove('blurred'); bgVideo.play().catch(()=>{}); videoStarted=true; renderCaption();
+        }
+        draw();
+      }
+    });
+
+    /* ---------- Video flow ---------- */
+    bgVideo.addEventListener('ended', ()=>{
+      if(videoIndex===1){
+        bgVideo.classList.add('blurred');
+        rippleCta.classList.add('show');
+      } else {
+        bgVideo.classList.add('blurred');
+        movementLocked=false; video2Done=true;
+        scrollMsg.classList.add('show'); hintShown=true;
+      }
+    });
+
+    rippleBtn.addEventListener('click', ()=>{
+      rippleCta.classList.remove('show');
+      movementLocked=true; videoIndex=2; videoStarted=false;
+      bgVideo.pause(); bgVideo.classList.add('blurred');
+      bgSource.src=nextVideo; bgVideo.load();
+      bgVideo.play().then(()=>{
+        bgVideo.classList.remove('blurred'); videoStarted=true; renderCaption();
+        scrollMsg.classList.add('show'); hintShown=true;
+      }).catch(()=>{});
+    });
+
+    /* ---------- Secret ---------- */
+    function smoothWalkToExit(){
+      autoWalking=true;
+      function step(){
+        frame=(frame+1)%totalFrames; xPos+=8; draw();
+        const img=cache.get(frame)||cache.get(0);
+        const dw=img?img.width*SPARKY_SCALE:200;
+        if(xPos>=canvas.width-dw+20){ setTimeout(Scene.afterSecretGoNext,250); return; }
+        requestAnimationFrame(step);
+      }
+      requestAnimationFrame(step);
+    }
+
+    secretBtn.addEventListener('click', ()=>{
+      if(secretStored)return;
+      secretStored=true; secretBtn.disabled=true;
+      Secrets.mark(sceneId); Secrets.renderCabinet();
+      scrollMsg.textContent='Got it! Returning to map…';
+      scrollMsg.classList.add('show');
+      setTimeout(()=>{ smoothWalkToExit(); },600);
+    });
+
+    function boot(){
+      resizeCanvas();
+      const first=new Image();
+      first.src=srcForIndex(0);
+      first.onload=()=>{ cache.set(0,first); xPos=Scene.START_X; draw(); Scene.initCabinet(); };
+    }
+    boot();
+  </script>
+</body>
+</html>
