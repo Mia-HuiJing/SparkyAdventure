@@ -111,7 +111,7 @@ const Scene = {
   },
 
   afterSecretGoNext() {
-    if (Secrets.allDone()) {first
+    if (Secrets.allDone()) {
       window.location.href = 'SecretGate.html';
     } else {
       window.location.href = 'map.html';
