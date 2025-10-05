@@ -4,7 +4,7 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Solar Flares with CME</title>
-<link rel="stylesheet" href="assets/css/scene.css"/>
+<link rel="stylesheet" href="./assets/css/scene.css"/>
 <style>
   /* Start CTA overlay */
   .start-cta{
@@ -32,7 +32,7 @@
 <body>
   <div class="stage">
     <video id="bgVideo" preload="auto" muted playsinline autoplay>
-      <source id="bgSource" src="assets/scene1.mp4" type="video/mp4">
+      <source id="bgSource" src="./assets/scene1.mp4" type="video/mp4">
     </video>
 
     <canvas id="seq"></canvas>
@@ -70,7 +70,7 @@
 })();
 
 const FILES = {
-  basePath: 'assets/SparkyWalking/',
+  basePath: './assets/SparkyWalking/',
   prefix:   'SparkyWalking',
   startNum: 0,
   endNum:   77,
@@ -148,7 +148,7 @@ function setHud(){
 bgVideo.addEventListener('ended', ()=>{
   if (videoIndex === 1){
     videoIndex = 2;
-    bgSrc.src = 'assets/scene2.mp4';
+    bgSrc.src = './assets/scene2.mp4';
     bgVideo.load();
     bgVideo.loop = true;
     bgVideo.play();
@@ -248,4 +248,5 @@ boot();
 </script>
 </body>
 </html>
+
 
