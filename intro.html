@@ -53,7 +53,7 @@
 
 <script>
 (function () {
-  var INTRO_PAGE = "intro.html"; 
+  var INTRO_PAGE = "index.html"; 
   var navEntry = (performance.getEntriesByType && performance.getEntriesByType('navigation')[0]) || null;
   var isReload = (navEntry && navEntry.type === 'reload') ||
                  (performance.navigation && performance.navigation.type === performance.navigation.TYPE_RELOAD);
@@ -63,7 +63,7 @@
   try { localStorage.clear(); } catch(e) {}
   try { sessionStorage.clear(); } catch(e) {}
 
-  var here = location.pathname.split('/').pop().toLowerCase() || "intro.html";
+  var here = location.pathname.split('/').pop().toLowerCase() || "index.html";
   if (here !== INTRO_PAGE.toLowerCase()) {
     window.location.replace(INTRO_PAGE);
   }
@@ -248,3 +248,4 @@ boot();
 </script>
 </body>
 </html>
+
