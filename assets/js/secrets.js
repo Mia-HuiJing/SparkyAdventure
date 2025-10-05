@@ -29,7 +29,7 @@ const Secrets = {
   save(obj) { localStorage.setItem(this.KEY, JSON.stringify(obj)); },
 
   randomLetter() {
-    return String.fromCharCode(65 + Math.floor(Math.random()*26)); // A–Z
+    return String.fromCharCode(65 + Math.floor(Math.random()*26));
   },
 
   has(scene) {
