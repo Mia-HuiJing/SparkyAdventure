@@ -1,4 +1,3 @@
-/* ================= Global Refresh Guard (true reload only) ================= */
 (function () {
   window.addEventListener('pageshow', function (evt) {
     if (evt && evt.persisted) return; // bfcache restore (back/forward) — ignore
@@ -12,15 +11,10 @@
     try { localStorage.clear(); } catch(e) {}
     try { sessionStorage.clear(); } catch(e) {}
 
-    // Always restart from intro.html after a true reload
-    window.location.replace('intro.html');
+    window.location.replace('index.html');
   }, { once: true });
 })();
 
-/* ================= Secrets (left-to-right order) =================
-   Storage shape:
-   { order: [ {scene:'powergrid', letter:'Q'}, ... ] }
-   ================================================================= */
 const Secrets = {
   KEY: 'sparky-secrets-v2',
 
@@ -77,7 +71,6 @@ const Secrets = {
   reset() { localStorage.removeItem(this.KEY); }
 };
 
-/* ================= Visits (map points clicked) =================== */
 const Visits = {
   KEY: 'sparky-visits-v2',
 
@@ -106,9 +99,8 @@ const Visits = {
   reset() { localStorage.removeItem(this.KEY); }
 };
 
-/* ================= Scene Helpers (shared) ======================== */
 const Scene = {
-  START_X: -336,             // exact start position requested
+  START_X: -336,             
   SPARKY_SCALE: 0.35,
   STEP_PX: 15,
   TRIGGER_X: 17,
@@ -119,11 +111,9 @@ const Scene = {
   },
 
   afterSecretGoNext() {
-    if (Secrets.allDone()) {
-      // all secrets collected → go to password gate (SecretGate.html) first
+    if (Secrets.allDone()) {first
       window.location.href = 'SecretGate.html';
     } else {
-      // otherwise, always go back to map
       window.location.href = 'map.html';
     }
   }
